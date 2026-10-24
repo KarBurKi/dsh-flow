@@ -1,0 +1,5 @@
+# dsh-flow：把本插件挂进 profile 的插件树（Host 半）
+# 提供 flow_* 工具，让四个角色（统筹/预研/开发/测试）之间派单、验收、归档。
+- insert:
+    - id: flow
+      name: dsh-flow
