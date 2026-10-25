@@ -240,18 +240,33 @@ flow_run({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md" })
 
 ## 验证边界
 
-**验过的**（自测脚本 21 项全过，模板工作区跑，跑完还原 config）
+**验过的**
 
-- 插件能导入、`apply` 是函数、6 个工具都注册，`session/event` 监听挂上。
-- 分步闭环全走通：`flow_start` 建卡（`status: pending`、六个头字段齐）→ 派开发/测试（`pending → processing`、记派单行）→ `flow_verify` 通过（追加「## 验收」、状态不动）→ `flow_close`（`done`、移到 `归档/任务卡/2026-10/`、返回 64 位 SHA、原位置清空）。
+单测（自测脚本 21 项全过，模板工作区跑，跑完还原 config）：
+
+- 插件能导入、`apply` 是函数、工具都注册，`session/event` 监听挂上。
+- 分步闭环全走通：`flow_start` 建卡 → 派开发/测试（`pending → processing`、记派单行）→ `flow_verify` → `flow_close`（`done`、移到归档区、返回 64 位 SHA、原位置清空）。
 - 拒绝路径：重复 `flow_close` 报「已经是 done」；`flow_verify` 不通过写进卡并投回开发；`flow_run` 按 step 推进并在投递不到时停住报因。
 - 投递超时时卡**不回滚**（`delivered: false`，卡仍在）。
-- 宿主内实际加载：2026-10-25 重启后六个工具出现在真实工具列表，`flow_roles action=get` 冒烟通过。前提是工具的 schema 必须带 `additionalProperties: false` 和 `output`——缺了宿主会把整行静默判成「启动失败」。
+- 宿主内实际加载：2026-10-25 重启后工具出现在真实工具列表。**前提是每个工具的 schema 必须带 `additionalProperties: false` 和 `output`**——缺了宿主会把整行静默判成「启动失败」，工具不出现但也不报错。
+
+**真实多会话闭环**（2026-10-25，0.2.0，开发 3 / 测试 3 六条独立会话跑四张卡）：
+
+- `flow_roles get` 多实例显示正常：`开发（3 个，按登记顺序挑人）：…`。
+- `flow_submit` 四次交卡都由工具挑人投递，两个不同测试先后接到卡（说明不是固定取第一个）。
+- 全链路走通四遍：`flow_submit` → `flow_verify` 通过 → `waiting_final` → 统筹终审 → `flow_close` 归档，无人工补位。
+- 旧单值配置（`roles` 全是字符串）回归：`flow_roles get` 正常显示、`set` 报「1 个实例」写回成功。
 
 **没验的（先当不能）**
 
-- 真实多会话闭环（四个角色各在不同会话里跑完整条）——自测用的是假 agent，只验了卡片与状态机，没验真人和真会话之间的来回。
-- 跨工作区（`config.workspace` 指到别处）、同名卡片、卡被归档后再被 `flow_run` 指到的情况。
+- **排队路径**：四张卡交卡时刻错开，每次都有空闲测试，`pickFree` 返回 null 那条没在真实会话跑过。
+- **不通过返工**：四张全通过，`flow_verify` 的「不通过 → 回 `processing` 投空闲开发」没触发。
+- **疑问回传**：`flow_ask` / `flow_answer` 一次都没走到。
+- **拒绝路径的负例**：`flow_close` 的两条拒绝、`flow_submit` 在 `blocked` 下的拒绝、`flow_verify` 在 `done` 下的拒绝，均未测试。
+- 挑人轮转只验了「不是固定第一个」，没验连续多轮是否真按最久未派轮转。
+- 跨工作区（`config.workspace` 指到别处）、同名卡片、卡被归档后再被 `flow_run` 指到。
+- 四张卡产物是旧产物复交，验的是流程不是重做。
 
-**样本**：单机、Windows、Node 一次进程内加载；不是端到端演练。
+**样本**：单机、Windows、4 张卡、6 条真实会话；不是端到端演练。
+
 
