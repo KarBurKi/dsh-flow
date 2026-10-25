@@ -249,33 +249,29 @@ flow_run({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md" })
 
 ## 验证边界
 
-**验过的**
+**单测**
 
-单测（自测脚本 21 项全过，模板工作区跑，跑完还原 config）：
-
-- 插件能导入、`apply` 是函数、工具都注册，`session/event` 监听挂上。
-- 分步闭环全走通：`flow_start` 建卡 → 派开发/测试（`pending → processing`、记派单行）→ `flow_verify` → `flow_close`（`done`、移到归档区、返回 64 位 SHA、原位置清空）。
-- 拒绝路径：重复 `flow_close` 报「已经是 done」；`flow_verify` 不通过写进卡并投回开发；`flow_run` 按 step 推进并在投递不到时停住报因。
-- 投递超时时卡**不回滚**（`delivered: false`，卡仍在）。
+- 分步闭环、拒绝路径、`flow_run` 分步推进：历史自测脚本 21 项全过（模板工作区，跑完还原 config）。
+- 段落拼接：`_selftest_section.mjs` 10 项全过（0.2.5 起）。
 - 宿主内实际加载：2026-10-25 重启后工具出现在真实工具列表。**前提是每个工具的 schema 必须带 `additionalProperties: false` 和 `output`**——缺了宿主会把整行静默判成「启动失败」，工具不出现但也不报错。
 
-**真实多会话闭环**（2026-10-25，0.2.0，开发 3 / 测试 3 六条独立会话跑四张卡）：
+**真实会话闭环**
 
-- `flow_roles get` 多实例显示正常：`开发（3 个，按登记顺序挑人）：…`。
-- `flow_submit` 四次交卡都由工具挑人投递，两个不同测试先后接到卡（说明不是固定取第一个）。
-- 全链路走通四遍：`flow_submit` → `flow_verify` 通过 → `waiting_final` → 统筹终审 → `flow_close` 归档，无人工补位。
-- 旧单值配置（`roles` 全是字符串）回归：`flow_roles get` 正常显示、`set` 报「1 个实例」写回成功。
+- **0.2.0**（2026-10-25，开发 3 / 测试 3 六条独立会话跑四张卡）：`flow_roles get` 多实例显示正常；`flow_submit` 四次交卡都由工具挑人，两个不同测试先后接到卡；全链路四遍走通无人工补位；旧单值配置回归正常。
+- **0.2.5**：`waiting_human` 用真卡验——连退第 1、2 次回 `processing`，第 3 次转 `waiting_human`，第 4 次 `flow_verify` 直接被拒；`flow_dispatch` 放行后回 `processing`，再验通过进 `waiting_final`。验收段四段都两换行、段内不粘连。另有独立测试会话按四条判据复核通过。
+- **0.2.6**：`dryRun` 硬条件——同一张卡跑前跑后 SHA-256 不变、登记单不增行、`lastAssigned` 一字不差；`wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft` 与真跑一致；`waiting_human` 下 `dryRun` 同样被拒（闸门与真跑同源）；`flow_submit` 投递失败回滚卡头、不占分配时间；`resolveCard` 找不到卡时带 `dryRun` 提示。
+- **0.2.7**：三档复查——`timeout` 档 `outcome=timeout`、卡头写 target 不回滚、`lastAssigned` 确实变动、登记单记「投递超时（未确认）」；`failed` 档（死号）卡头回滚、死号不进 `lastAssigned`、记「投递失败（未送达）」。判据 6 的连退 1/2/3 递增不跳号、通过进 `waiting_final` 一并复查。
+- 现场共造 9 张一次性假卡（dryRun / submit / waiting_human / 连退回归 / 通过 / 判据 CD 等），验完全部清掉，config 临时改动均已还原。
 
 **没验的（先当不能）**
 
-- **排队路径**：四张卡交卡时刻错开，每次都有空闲测试，`pickFree` 返回 null 那条没在真实会话跑过。
-- **不通过返工**：四张全通过，`flow_verify` 的「不通过 → 回 `processing` 投空闲开发」没触发。
+- **`flow_submit` 的 `timeout` 档**：跟 `flow_verify` 同一套判定，但没单独实证。
+- **`failed` 档的字面量匹配**：靠 `/not-found|不存在/i` 认，宿主换措辞会漏判成 `timeout`，届时同步改正则。
+- **排队路径**：交卡时刻一直错开，`pickFree` 返回 null 那条没在真实会话跑过。
 - **疑问回传**：`flow_ask` / `flow_answer` 一次都没走到。
-- **拒绝路径的负例**：`flow_close` 的两条拒绝、`flow_submit` 在 `blocked` 下的拒绝、`flow_verify` 在 `done` 下的拒绝，均未测试。
-- 挑人轮转只验了「不是固定第一个」，没验连续多轮是否真按最久未派轮转。
-- 跨工作区（`config.workspace` 指到别处）、同名卡片、卡被归档后再被 `flow_run` 指到。
-- 四张卡产物是旧产物复交，验的是流程不是重做。
+- **挑人轮转**：只验了「不是固定第一个」，没验连续多轮是否真按最久未派轮转。
+- **跨工作区**（`config.workspace` 指到别处）、同名卡片、卡被归档后再被 `flow_run` 指到。
 
-**样本**：单机、Windows、4 张卡、6 条真实会话；不是端到端演练。
+**样本**：单机、Windows 宿主、9 张假卡 + 6 条真实会话；不是端到端演练。0.2.6 的 `timeout` 档是拿生产 config 直接投到真开发身上验的——方式不合规，结论可采信。
 
 
