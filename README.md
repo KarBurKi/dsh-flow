@@ -61,9 +61,32 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 | `flow_roles` | 登记 / 查看四个角色对应的会话 id；`action=set` 用逗号分隔可一次登记多个会话（多实例，例如三个测试） |
 | `flow_start` | 建任务卡：写 YAML 头（from/to/type/ticket/status/created），status=`pending`，投给统筹 |
 | `flow_dispatch` | 统筹派单：卡状态 `pending → processing`，记一笔派单，投给开发 / 测试；**写 `toSession`（完整会话 id）优先于 `to` 角色名**；顺手把下一站写进卡头 `downstream`（不填按 `to` 推导：开发→测试、测试→统筹） |
+| `flow_submit` | 开发交卡：`processing → waiting_verify`，追加「## 交付记录」，**自动挑一个空闲测试**（名下没有在途卡）投过去；都忙就停在 `waiting_verify` 报「排队」 |
+| `flow_ask` | 开发遇需求对不上、不确定时**不许猜**：卡 `processing → blocked`，追加「## 疑问」，投统筹决策 |
+| `flow_answer` | 统筹答复疑问：`blocked → processing`，追加「## 决策」，投回开发；决策留卡里供追溯 |
 | `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发 |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
+
+### 状态机（0.2.0）
+
+```
+pending → processing → blocked → waiting_verify → waiting_final → done
+              ▲            │            │
+              └─ answer ───┘            │
+              └────── 不通过返工 ────────┘
+```
+
+| 状态 | 谁在手上 | 怎么离开 |
+| --- | --- | --- |
+| `pending` | 等派单（统筹） | `flow_dispatch` → `processing` |
+| `processing` | 开发在做 | `flow_submit` → `waiting_verify`；`flow_ask` → `blocked` |
+| `blocked` | 等统筹答复疑问 | `flow_answer` → `processing` |
+| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing` |
+| `waiting_final` | 等统筹终审 | `flow_close` → `done`（归档） |
+| `done` | 归档区 | 终态 |
+
+卡头的 `to_session` 记的是**当前持有人**，挑空闲测试就靠它判断「谁手里有在途卡」。
 
 ### 数据在哪
 
