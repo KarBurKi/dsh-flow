@@ -64,7 +64,7 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 | `flow_submit` | 开发交卡：`processing → waiting_verify`，追加「## 交付记录」，**自动挑一个空闲测试**（名下没有在途卡）投过去；都忙就停在 `waiting_verify` 报「排队」 |
 | `flow_ask` | 开发遇需求对不上、不确定时**不许猜**：卡 `processing → blocked`，追加「## 疑问」，投统筹决策 |
 | `flow_answer` | 统筹答复疑问：`blocked → processing`，追加「## 决策」，投回开发；决策留卡里供追溯 |
-| `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发 |
+| `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发（**同一张卡最多自动退 2 次**，第 3 次转人工裁定） |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
 | `flow_status` | 读全局会话状态表，汇总「活跃 N / 待机 M」+ 明细；`only` 可只看活跃或待机 |
@@ -83,7 +83,7 @@ pending → processing → blocked → waiting_verify → waiting_final → done
 | `pending` | 等派单（统筹） | `flow_dispatch` → `processing` |
 | `processing` | 开发在做 | `flow_submit` → `waiting_verify`；`flow_ask` → `blocked` |
 | `blocked` | 等统筹答复疑问 | `flow_answer` → `processing` |
-| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing` |
+| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing`（回开发；**连退满 3 次改投统筹，转人工裁定，不再自动回开发**） |
 | `waiting_final` | 等统筹终审 | `flow_close` → `done`（归档） |
 | `done` | 归档区 | 终态 |
 
@@ -94,6 +94,7 @@ pending → processing → blocked → waiting_verify → waiting_final → done
 - `~/.dsh/plugins/dsh-flow/config.json` — 工作区路径、任务卡目录、归档目录、四个角色的会话 id。
 - 任务卡 — 在 `config.workspace` + `config.tasksDir` 下（`workspace` 默认为空，**首次使用前必须配成本机工作区路径**；`tasksDir` 默认 `【文档区】\计划与任务`）。
 - 归档 — 在 `config.workspace` + `config.archiveDir` 下，按 `<类型>\<YYYY-MM>` 分。
+- 派活登记单 — `【文档区】\进度\派活登记.md`（即 `tasksDir` 的同级 `进度/` 下），一行一条：时间 ｜ 谁 ｜ 任务 ｜ 状态 ｜ 摘要。`flow_dispatch` / `flow_submit` / `flow_verify` / `flow_close` 各自追加；**只追加不重写**，写失败不影响主流程。
 - `~/.dsh/会话状态.md` — **全局会话状态表**，所有会话共用一张，**不由本插件维护也不归本插件**。`flow_status` 只读它，汇总「活跃 / 待机」；这张表是判断「现在能不能重启宿主」的依据。
 
 ---
