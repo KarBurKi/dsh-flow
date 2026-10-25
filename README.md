@@ -223,11 +223,11 @@ flow_run({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md" })
 - 分步闭环全走通：`flow_start` 建卡（`status: pending`、六个头字段齐）→ 派开发/测试（`pending → processing`、记派单行）→ `flow_verify` 通过（追加「## 验收」、状态不动）→ `flow_close`（`done`、移到 `归档/任务卡/2026-10/`、返回 64 位 SHA、原位置清空）。
 - 拒绝路径：重复 `flow_close` 报「已经是 done」；`flow_verify` 不通过写进卡并投回开发；`flow_run` 按 step 推进并在投递不到时停住报因。
 - 投递超时时卡**不回滚**（`delivered: false`，卡仍在）。
+- 宿主内实际加载：2026-10-25 重启后六个工具出现在真实工具列表，`flow_roles action=get` 冒烟通过。前提是工具的 schema 必须带 `additionalProperties: false` 和 `output`——缺了宿主会把整行静默判成「启动失败」。
 
 **没验的（先当不能）**
 
 - 真实多会话闭环（四个角色各在不同会话里跑完整条）——自测用的是假 agent，只验了卡片与状态机，没验真人和真会话之间的来回。
-- 宿主内实际加载（工具出现在真实工具列表里）必须**重启 DSH**，没重启就不算验过。
 - 跨工作区（`config.workspace` 指到别处）、同名卡片、卡被归档后再被 `flow_run` 指到的情况。
 
 **样本**：单机、Windows、Node 一次进程内加载；不是端到端演练。
