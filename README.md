@@ -68,7 +68,7 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 ### 数据在哪
 
 - `~/.dsh/plugins/dsh-flow/config.json` — 工作区路径、任务卡目录、归档目录、四个角色的会话 id。
-- 任务卡 — 在 `config.workspace` + `config.tasksDir` 下（默认 `<workspace>\【文档区】\计划与任务`）。
+- 任务卡 — 在 `config.workspace` + `config.tasksDir` 下（`workspace` 默认为空，**首次使用前必须配成本机工作区路径**；`tasksDir` 默认 `【文档区】\计划与任务`）。
 - 归档 — 在 `config.workspace` + `config.archiveDir` 下，按 `<类型>\<YYYY-MM>` 分。
 
 ---
