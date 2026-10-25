@@ -58,9 +58,9 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 
 | 工具 | 干什么 |
 | --- | --- |
-| `flow_roles` | 登记 / 查看四个角色对应的会话 id |
+| `flow_roles` | 登记 / 查看四个角色对应的会话 id；`action=set` 用逗号分隔可一次登记多个会话（多实例，例如三个测试） |
 | `flow_start` | 建任务卡：写 YAML 头（from/to/type/ticket/status/created），status=`pending`，投给统筹 |
-| `flow_dispatch` | 统筹派单：卡状态 `pending → processing`，记一笔派单，投给开发 / 测试 |
+| `flow_dispatch` | 统筹派单：卡状态 `pending → processing`，记一笔派单，投给开发 / 测试；**写 `toSession`（完整会话 id）优先于 `to` 角色名**；顺手把下一站写进卡头 `downstream`（不填按 `to` 推导：开发→测试、测试→统筹） |
 | `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发 |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
@@ -160,7 +160,7 @@ flow_start({
 
 ```jsonc
 // 派给开发
-flow_dispatch({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md", "to": "开发",
+flow_dispatch({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md", "to": "开发", "toSession": "session-1d314539-…",
                 "note": "按卡实现到 0.1.0，自测后 push，回执写在卡末" })
 ```
 
