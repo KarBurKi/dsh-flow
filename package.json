@@ -1,6 +1,6 @@
 {
   "name": "dsh-flow",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "跨会话流程编排：统筹 / 预研 / 开发 / 测试四角色的派单、独立验收、需求比对、终审把关、归档闭环。零依赖，不 import 核心包，也不依赖剧场插件。",
   "type": "module",

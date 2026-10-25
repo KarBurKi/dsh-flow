@@ -94,7 +94,7 @@ pending → processing → blocked → waiting_verify → waiting_final → done
 - `~/.dsh/plugins/dsh-flow/config.json` — 工作区路径、任务卡目录、归档目录、四个角色的会话 id。
 - 任务卡 — 在 `config.workspace` + `config.tasksDir` 下（`workspace` 默认为空，**首次使用前必须配成本机工作区路径**；`tasksDir` 默认 `【文档区】\计划与任务`）。
 - 归档 — 在 `config.workspace` + `config.archiveDir` 下，按 `<类型>\<YYYY-MM>` 分。
-- 派活登记单 — `【文档区】\进度\派活登记.md`（即 `tasksDir` 的同级 `进度/` 下），一行一条：时间 ｜ 谁 ｜ 任务 ｜ 状态 ｜ 摘要。`flow_dispatch` / `flow_submit` / `flow_verify` / `flow_close` 各自追加；**只追加不重写**，写失败不影响主流程。
+- 派活登记单 — `【文档区】\进度\派活登记.md`（即 `tasksDir` 的同级 `进度/` 下），一行一条：时间 ｜ 谁 ｜ 任务 ｜ 状态 ｜ 摘要。`flow_dispatch` / `flow_submit`（含排队）/ `flow_verify` / `flow_close` 各自追加；**只追加不重写**，写失败不影响主流程——但**不再静默**：会 `console.error` 并往插件目录 `_dispatch-error.log` 落一条完整堆栈，排查「登记单没写」先看它。
 - `~/.dsh/会话状态.md` — **全局会话状态表**，所有会话共用一张，**不由本插件维护也不归本插件**。`flow_status` 只读它，汇总「活跃 / 待机」；这张表是判断「现在能不能重启宿主」的依据。
 
 ---
