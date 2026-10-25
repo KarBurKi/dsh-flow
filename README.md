@@ -67,6 +67,7 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 | `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发 |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
+| `flow_status` | 读全局会话状态表，汇总「活跃 N / 待机 M」+ 明细；`only` 可只看活跃或待机 |
 
 ### 状态机（0.2.0）
 
@@ -93,6 +94,7 @@ pending → processing → blocked → waiting_verify → waiting_final → done
 - `~/.dsh/plugins/dsh-flow/config.json` — 工作区路径、任务卡目录、归档目录、四个角色的会话 id。
 - 任务卡 — 在 `config.workspace` + `config.tasksDir` 下（`workspace` 默认为空，**首次使用前必须配成本机工作区路径**；`tasksDir` 默认 `【文档区】\计划与任务`）。
 - 归档 — 在 `config.workspace` + `config.archiveDir` 下，按 `<类型>\<YYYY-MM>` 分。
+- `~/.dsh/会话状态.md` — **全局会话状态表**，所有会话共用一张，**不由本插件维护也不归本插件**。`flow_status` 只读它，汇总「活跃 / 待机」；这张表是判断「现在能不能重启宿主」的依据。
 
 ---
 
