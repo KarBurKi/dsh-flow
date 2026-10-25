@@ -83,7 +83,8 @@ pending → processing → blocked → waiting_verify → waiting_final → done
 | `pending` | 等派单（统筹） | `flow_dispatch` → `processing` |
 | `processing` | 开发在做 | `flow_submit` → `waiting_verify`；`flow_ask` → `blocked` |
 | `blocked` | 等统筹答复疑问 | `flow_answer` → `processing` |
-| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing`（回开发；**连退满 3 次改投统筹，转人工裁定，不再自动回开发**） |
+| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing`（回开发；**连退满 3 次 → `waiting_human`**） |
+| `waiting_human` | 连退超限，等人工裁定 | 统筹 `flow_dispatch` 派单 → 转回 `processing`（等于放行）；**此状态下不能再 `flow_verify`** |
 | `waiting_final` | 等统筹终审 | `flow_close` → `done`（归档） |
 | `done` | 归档区 | 终态 |
 
