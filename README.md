@@ -64,12 +64,12 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 | `flow_submit` | 开发交卡：`processing → waiting_verify`，追加「## 交付记录」，**自动挑一个空闲测试**（名下没有在途卡）投过去；都忙就停在 `waiting_verify` 报「排队」 |
 | `flow_ask` | 开发遇需求对不上、不确定时**不许猜**：卡 `processing → blocked`，追加「## 疑问」，投统筹决策 |
 | `flow_answer` | 统筹答复疑问：`blocked → processing`，追加「## 决策」，投回开发；决策留卡里供追溯 |
-| `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发（**同一张卡最多自动退 2 次**，第 3 次转 `waiting_human` 人工裁定；此状态下再调会直接报错，要先由统筹 `flow_dispatch` 放行）。**先投递再记账**：投递不成就当没发生——不占分配时间、卡头 `to_session` 回滚成原持有人、登记单记「投递失败（未送达）」并带错因。**`dryRun:true` 只算不改**：不改卡、不投递、不写登记单、不占分配时间，返回 `wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft`，给测试验流程用 |
+| `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发（**同一张卡最多自动退 2 次**，第 3 次转 `waiting_human` 人工裁定；此状态下再调会直接报错，要先由统筹 `flow_dispatch` 放行）。**先投递再记账**，投递结果分三档见下。**`dryRun:true` 只算不改**：不改卡、不投递、不写登记单、不占分配时间，返回 `wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft`，给测试验流程用 |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
 | `flow_status` | 读全局会话状态表，汇总「活跃 N / 待机 M」+ 明细；`only` 可只看活跃或待机 |
 
-### 状态机（0.2.6）
+### 状态机（0.2.7）
 
 ```
 pending → processing → blocked → waiting_verify → waiting_final → done
@@ -97,8 +97,10 @@ waiting_verify ──连退满 3 次──> waiting_human ──统筹 flow_disp
 - `~/.dsh/plugins/dsh-flow/config.json` — 工作区路径、任务卡目录、归档目录、四个角色的会话 id。
 - 任务卡 — 在 `config.workspace` + `config.tasksDir` 下（`workspace` 默认为空，**首次使用前必须配成本机工作区路径**；`tasksDir` 默认 `【文档区】\计划与任务`）。
 - 归档 — 在 `config.workspace` + `config.archiveDir` 下，按 `<类型>\<YYYY-MM>` 分。
-- 派活登记单 — `【文档区】\进度\派活登记.md`（即 `tasksDir` 的同级 `进度/` 下），一行一条：时间 ｜ 谁 ｜ 任务 ｜ 状态 ｜ 摘要。`flow_dispatch` / `flow_submit`（含排队）/ `flow_verify` / `flow_close` 各自追加；**只追加不重写**，写失败不影响主流程——但**不再静默**：会 `console.error` 并往插件目录 `_dispatch-error.log` 落一条完整堆栈，排查「登记单没写」先看它。登记单的「谁」列默认取卡头 `to_session`；手工建的卡没有这一栏，交卡时传 `flow_submit({ "session": "session-…" })` 补上。`flow_verify` / `flow_submit` 投递不到收件人时，记的状态是「投递失败（未送达）」并带 `reply` 的错因，**不记成「已打回 / 已交卡」**。
-- **假派活**：投递失败就不会有「开发收到请重做、去看卡已没了」这种事。投递失败的卡头 `to_session` 会回滚成原持有人，不留指向死会话的指针；`lastAssigned` 也不动，轮转挑人不受影响。要复现：把 `config.json` 里某个角色指到不存在的会话，再跑 `flow_verify` / `flow_submit`，看登记单记的是不是「投递失败」。
+- 派活登记单 — `【文档区】\进度\派活登记.md`（即 `tasksDir` 的同级 `进度/` 下），一行一条：时间 ｜ 谁 ｜ 任务 ｜ 状态 ｜ 摘要。`flow_dispatch` / `flow_submit`（含排队）/ `flow_verify` / `flow_close` 各自追加；**只追加不重写**，写失败不影响主流程——但**不再静默**：会 `console.error` 并往插件目录 `_dispatch-error.log` 落一条完整堆栈，排查「登记单没写」先看它。登记单的「谁」列默认取卡头 `to_session`；手工建的卡没有这一栏，交卡时传 `flow_submit({ "session": "session-…" })` 补上。
+- **投递结果分三档**（`flow_verify` / `flow_submit` 都按这套）：`delivered`（`reply` 正常返回）、`timeout`（超时，不确定）、`failed`（`reply` 里是 `not-found` / `不存在` 这类，明确没送到）。**超时按「当它送到了」处理**——照常 `touchAssigned`、卡头写 target、登记单记「…（投递超时，未确认）」；因为漏记分配时间的伤害比多记一次大。只有 `failed` 才回滚卡头、不占分配时间、记「投递失败（未送达）」。返回体里有 `outcome` 字段，三档一眼可辨。
+- **为什么超时不等于没送到**：`theater_say` 超时的消息通常已经送达，只是对方没在 `timeoutMs` 内回。2026-10-25 实测：往开发投「请重做」，对端真收到了，但当时按「未送达」记账，对端和白纸黑字的登记单对不上。
+- **假派活**：明确失败（会话不存在）时不会有「开发收到请重做、去看卡已没了」这种事。这种卡头 `to_session` 会回滚成原持有人，不留指向死会话的指针；`lastAssigned` 也不动，轮转挑人不受影响。要复现：把 `config.json` 里某个角色**临时**指到不存在的会话，跑 `flow_verify` / `flow_submit`，看登记单记的是不是「投递失败（未送达）」，跑完记得还原。
 - `~/.dsh/会话状态.md` — **全局会话状态表**，所有会话共用一张，**不由本插件维护也不归本插件**。`flow_status` 只读它，汇总「活跃 / 待机」；这张表是判断「现在能不能重启宿主」的依据。
 
 ---
