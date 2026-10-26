@@ -64,20 +64,22 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 | `flow_submit` | 开发交卡：`processing → waiting_verify`，追加「## 交付记录」，**自动挑一个空闲测试**（名下没有在途卡）投过去；都忙就停在 `waiting_verify` 报「排队」 |
 | `flow_ask` | 开发遇需求对不上、不确定时**不许猜**：卡 `processing → blocked`，追加「## 疑问」，投统筹决策 |
 | `flow_answer` | 统筹答复疑问：`blocked → processing`，追加「## 决策」，投回开发；决策留卡里供追溯 |
-| `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发（**同一张卡最多自动退 2 次**，第 3 次转 `waiting_human` 人工裁定；此状态下再调会直接报错，要先由统筹 `flow_dispatch` 放行）。**先投递再记账**，投递结果分三档见下。**`dryRun:true` 只算不改**：不改卡、不投递、不写登记单、不占分配时间，返回 `wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft`，给测试验流程用 |
+| `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发（**实现缺陷类最多退 2 轮**——测试退回和 `flow_reject` 驳回合起来算同一本账，第 3 次动作转 `waiting_human` 人工裁定；此状态下再调会直接报错，要先由统筹 `flow_dispatch` 放行）。**先投递再记账**，投递结果分三档见下。**`dryRun:true` 只算不改**：不改卡、不投递、不写登记单、不占分配时间，返回 `wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft`，给测试验流程用 |
+| `flow_reject` | 统筹终审驳回（0.3.0）：**只有 `waiting_final` 能驳**，退回 `processing` 投**原开发**（从最后一段「## 交付记录」的提交人取），卡上追加「## 终审驳回」段（理由 / 驳回人 / 类型 / 轮次）。`type` 可选 `实现缺陷` / `执行书缺陷`，不填算实现缺陷；**两类各 2 轮、账合并**（`## 验收` 的测试退回和驳回算同一本），同类型满 2 轮后第 3 次抛错提示人工裁定。投递明确失败时卡一个字都不动 |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
 | `flow_status` | 读全局会话状态表，汇总「活跃 N / 待机 M」+ 明细；`only` 可只看活跃或待机 |
 
-### 状态机（0.2.7）
+### 状态机（0.3.0）
 
 ```
 pending → processing → blocked → waiting_verify → waiting_final → done
-              ▲            │            │
-              └─ answer ───┘            │
-              └────── 不通过返工 ────────┘
+              ▲            │            │               │
+              └─ answer ───┘            │               │
+              └────── 不通过返工 ────────┘               │
+              └────────── flow_reject 驳回 ──────────────┘
 
-waiting_verify ──连退满 3 次──> waiting_human ──统筹 flow_dispatch 放行──> processing
+waiting_verify ──实现缺陷类满 3 次──> waiting_human ──统筹 flow_dispatch 放行──> processing
 ```
 
 | 状态 | 谁在手上 | 怎么离开 |
@@ -85,9 +87,9 @@ waiting_verify ──连退满 3 次──> waiting_human ──统筹 flow_disp
 | `pending` | 等派单（统筹） | `flow_dispatch` → `processing` |
 | `processing` | 开发在做 | `flow_submit` → `waiting_verify`；`flow_ask` → `blocked` |
 | `blocked` | 等统筹答复疑问 | `flow_answer` → `processing` |
-| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing`（回开发；**连退满 3 次 → `waiting_human`**） |
+| `waiting_verify` | 测试在验（或排队中） | `flow_verify` 通过 → `waiting_final`；不通过 → `processing`（回开发；**实现缺陷类满 3 次 → `waiting_human`**） |
 | `waiting_human` | 连退超限，等人工裁定 | 统筹 `flow_dispatch` 派单 → 转回 `processing`（等于放行）；**此状态下不能再 `flow_verify`** |
-| `waiting_final` | 等统筹终审 | `flow_close` → `done`（归档） |
+| `waiting_final` | 等统筹终审 | `flow_close` → `done`（归档）；`flow_reject` → `processing`（退回原开发，**唯一能驳的状态**） |
 | `done` | 归档区 | 终态 |
 
 卡头的 `to_session` 记的是**当前持有人**，挑空闲测试就靠它判断「谁手里有在途卡」。
@@ -192,7 +194,7 @@ flow_start({
 
 ```jsonc
 // 派给开发
-flow_dispatch({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md", "to": "开发", "toSession": "session-1d314539-…",
+flow_dispatch({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md", "to": "开发", "toSession": "<开发会话 id>",
                 "note": "按卡实现到 0.1.0，自测后 push，回执写在卡末" })
 ```
 
@@ -261,6 +263,7 @@ flow_run({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md" })
 - **0.2.5**：`waiting_human` 用真卡验——连退第 1、2 次回 `processing`，第 3 次转 `waiting_human`，第 4 次 `flow_verify` 直接被拒；`flow_dispatch` 放行后回 `processing`，再验通过进 `waiting_final`。验收段四段都两换行、段内不粘连。另有独立测试会话按四条判据复核通过。
 - **0.2.6**：`dryRun` 硬条件——同一张卡跑前跑后 SHA-256 不变、登记单不增行、`lastAssigned` 一字不差；`wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft` 与真跑一致；`waiting_human` 下 `dryRun` 同样被拒（闸门与真跑同源）；`flow_submit` 投递失败回滚卡头、不占分配时间；`resolveCard` 找不到卡时带 `dryRun` 提示。
 - **0.2.7**：三档复查——`timeout` 档 `outcome=timeout`、卡头写 target 不回滚、`lastAssigned` 确实变动、登记单记「投递超时（未确认）」；`failed` 档（死号）卡头回滚、死号不进 `lastAssigned`、记「投递失败（未送达）」。判据 6 的连退 1/2/3 递增不跳号、通过进 `waiting_final` 一并复查。
+- **0.3.0**（2026-10-26，加 `flow_reject`）：重启后真卡流程已验——统筹真调通过路径 5/5（含第 3 次报错），测试中心 95d122de 模块级复验 40/0。函数级已验（`reworkCounts` 合并账：验收不通过 1 + 驳回(实现缺陷) 1 = `impl: 2`；两段执行书缺陷 = `spec: 2`、`impl: 0`；无类型驳回算实现缺陷；`originalDeveloper` 多段取最后、假值返回空串）。工具注册在重启后已验。段头注入方向另验：`safeLine` / `safeBlock` 把写进卡的自由文本压平坦化，段切与字段解析一律行首锚定——理由里写 `## 验收`、`- 类型：`、`- 提交人：` 都改不动段与账；`lastVerdict()` 也一并改成行首锚定（原来用字面 `lastIndexOf("## 验收")`，理由里一句「## 验收 结论：不通过」就能骗过 `flow_close` 的归档判定）。
 - 现场共造 9 张一次性假卡（dryRun / submit / waiting_human / 连退回归 / 通过 / 判据 CD 等），验完全部清掉，config 临时改动均已还原。
 
 **没验的（先当不能）**
