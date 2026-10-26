@@ -60,12 +60,12 @@ dsh-flow 把「一条活怎么走完」固成工具：任务卡是文档（正�
 | --- | --- |
 | `flow_roles` | 登记 / 查看四个角色对应的会话 id；`action=set` 用逗号分隔可一次登记多个会话（多实例，例如三个测试） |
 | `flow_start` | 建任务卡：写 YAML 头（from/to/type/ticket/status/created），status=`pending`，投给统筹 |
-| `flow_dispatch` | 统筹派单：卡状态 `pending → processing`，记一笔派单，投给开发 / 测试；**写 `toSession`（完整会话 id）优先于 `to` 角色名**；顺手把下一站写进卡头 `downstream`（不填按 `to` 推导：开发→测试、测试→统筹） |
-| `flow_submit` | 开发交卡：`processing → waiting_verify`，追加「## 交付记录」，**自动挑一个空闲测试**（名下没有在途卡）投过去；都忙就停在 `waiting_verify` 报「排队」 |
+| `flow_dispatch` | 统筹派单：卡状态 `pending → processing`，记一笔派单，投给开发 / 测试；**写 `toSession`（完整会话 id）优先于 `to` 角色名**；顺手把下一站写进卡头 `downstream`（不填按 `to` 推导：开发→测试、测试→统筹）；**派给谁就把卡头 `to_session` 改成谁**（0.3.1：不改这一笔，交卡时的「提交人」会取到建卡人统筹，终审驳回就投错人），派单行也带会话 id |
+| `flow_submit` | 开发交卡：`processing → waiting_verify`，追加「## 交付记录」，**自动挑一个空闲测试**（名下没有在途卡）投过去；都忙就停在 `waiting_verify` 报「排队」。提交人取 `session` 参数 → 卡头 `to_session` 兜底；**兜底撞上统筹登记 id 一律作废，记「（未登记）」并写明原因**（0.3.2：手工建卡的卡头常是统筹，那不是交卡人） |
 | `flow_ask` | 开发遇需求对不上、不确定时**不许猜**：卡 `processing → blocked`，追加「## 疑问」，投统筹决策 |
 | `flow_answer` | 统筹答复疑问：`blocked → processing`，追加「## 决策」，投回开发；决策留卡里供追溯 |
 | `flow_verify` | 测试回执：把「通过 / 不通过 + 报告路径」写进卡；不通过投回开发（**实现缺陷类最多退 2 轮**——测试退回和 `flow_reject` 驳回合起来算同一本账，第 3 次动作转 `waiting_human` 人工裁定；此状态下再调会直接报错，要先由统筹 `flow_dispatch` 放行）。**先投递再记账**，投递结果分三档见下。**`dryRun:true` 只算不改**：不改卡、不投递、不写登记单、不占分配时间，返回 `wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft`，给测试验流程用 |
-| `flow_reject` | 统筹终审驳回（0.3.0）：**只有 `waiting_final` 能驳**，退回 `processing` 投**原开发**（从最后一段「## 交付记录」的提交人取），卡上追加「## 终审驳回」段（理由 / 驳回人 / 类型 / 轮次）。`type` 可选 `实现缺陷` / `执行书缺陷`，不填算实现缺陷；**两类各 2 轮、账合并**（`## 验收` 的测试退回和驳回算同一本），同类型满 2 轮后第 3 次抛错提示人工裁定。投递明确失败时卡一个字都不动 |
+| `flow_reject` | 统筹终审驳回（0.3.0）：**只有 `waiting_final` 能驳**，退回 `processing` 投**原开发**（从最后一段「## 交付记录」的提交人取；**提交人若是统筹登记 id，作废并记进 `ignoredCoordinatorSubmitters` 报出来**，改投空闲开发——0.3.2），卡上追加「## 终审驳回」段（理由 / 驳回人 / 类型 / 轮次）。`type` 可选 `实现缺陷` / `执行书缺陷`，不填算实现缺陷；**两类各 2 轮、账合并**（`## 验收` 的测试退回和驳回算同一本），同类型满 2 轮后第 3 次抛错提示人工裁定。投递明确失败时卡一个字都不动 |
 | `flow_close` | 归档：状态改 `done`、移到【归档区】`<类型>\<YYYY-MM>\`、移动前后核对 SHA-256 |
 | `flow_run` | 一键封顶：读一张卡按状态自动推进，失败停下报原因 |
 | `flow_status` | 读全局会话状态表，汇总「活跃 N / 待机 M」+ 明细；`only` 可只看活跃或待机 |
@@ -199,7 +199,8 @@ flow_dispatch({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.m
 ```
 
 - 卡状态：`pending → processing`
-- 卡里多一行：`> 派单 → 开发（2026-10-25 14:20）：按卡实现到 0.1.0，…`
+- 卡里多一行：`> 派单 → 开发 session-07ecf17a-…（2026-10-25 14:20）：按卡实现到 0.1.0，…`
+- 卡头 `to_session` 同步改成被派的那个会话（0.3.1 起）——它记的是「当前持有人」，交卡时「提交人」也从这里取
 - 开发被叫醒
 
 ### 第 3 步 · 开发实现、回执
@@ -264,9 +265,20 @@ flow_run({ "card": "任务卡_视频录制插件_录屏录制_NA_20261025.md" })
 - **0.2.6**：`dryRun` 硬条件——同一张卡跑前跑后 SHA-256 不变、登记单不增行、`lastAssigned` 一字不差；`wouldBeStatus` / `wouldDeliverTo` / `rejectsLeft` 与真跑一致；`waiting_human` 下 `dryRun` 同样被拒（闸门与真跑同源）；`flow_submit` 投递失败回滚卡头、不占分配时间；`resolveCard` 找不到卡时带 `dryRun` 提示。
 - **0.2.7**：三档复查——`timeout` 档 `outcome=timeout`、卡头写 target 不回滚、`lastAssigned` 确实变动、登记单记「投递超时（未确认）」；`failed` 档（死号）卡头回滚、死号不进 `lastAssigned`、记「投递失败（未送达）」。判据 6 的连退 1/2/3 递增不跳号、通过进 `waiting_final` 一并复查。
 - **0.3.0**（2026-10-26，加 `flow_reject`）：重启后真卡流程已验——统筹真调通过路径 5/5（含第 3 次报错），测试中心 95d122de 模块级复验 40/0。函数级已验（`reworkCounts` 合并账：验收不通过 1 + 驳回(实现缺陷) 1 = `impl: 2`；两段执行书缺陷 = `spec: 2`、`impl: 0`；无类型驳回算实现缺陷；`originalDeveloper` 多段取最后、假值返回空串）。工具注册在重启后已验。段头注入方向另验：`safeLine` / `safeBlock` 把写进卡的自由文本压平坦化，段切与字段解析一律行首锚定——理由里写 `## 验收`、`- 类型：`、`- 提交人：` 都改不动段与账；`lastVerdict()` 也一并改成行首锚定（原来用字面 `lastIndexOf("## 验收")`，理由里一句「## 验收 结论：不通过」就能骗过 `flow_close` 的归档判定）。
+- **0.3.1**（2026-10-26，派单时更新 `to_session`）：`flow_dispatch` 派完把卡头 `to_session` 改成被派的会话，派单行带上会话 id；`flow_submit` 的「- 提交人」改取真正的交卡人（`args.session` → 卡头 `to_session` 兜底），不再可能写成建卡人。起因：建卡时 `to_session` 写统筹，派给开发后卡头仍指统筹，交卡记成「提交人：统筹」，`flow_reject` 的 `originalDeveloper` 照提交人取，终审驳回就投回统筹而不是开发（2026-10-26 13:26 那张卡被当成别人的，源头在此）。六态流转、两套验收、驳回轮次账均未动。
+- **0.3.2**（2026-10-26，堵住 0.3.1 漏的那条入口）：0.3.1 只修了主路径，5 号探针 F 抓到反例——手工建卡 + 卡头 `to_session` 是统筹 + 交卡不传 `session`，提交人照样记成统筹，`originalDeveloper` 再从提交人取，驳回仍投统筹。现在两头都拦：`flow_submit` 的兜底撞上统筹登记 id 一律作废，记「（未登记）」并加一行「- 提交人判定：… 是统筹登记 id，不作交卡人」；`originalDeveloper` 扫交付记录时跳过统筹 id，并把跳过的写进 `flow_reject` 返回的 `ignoredCoordinatorSubmitters`（同时 `console.error` 报一行），不静默。另修「## 交付记录」段头前少一个空行（与 `flow_verify` 的段间口径对齐，属段粘连类，5 号 §五 复现）。函数级已验（0.3.2，机器 harness：卡头统筹 + 不传 session → 提交人「（未登记）」+ 判定行 + 段头两换行；对照卡头是开发 → 提交人写开发、无判定行；交付记录里提交人=统筹 → 驳回 `to` 是空闲开发、`isOriginalDeveloper:false`、`ignoredCoordinatorSubmitters` 有值）。
+- **0.3.3**（2026-10-26，第三个洞：写卡把别人的段吃掉）：`flow_submit` / `flow_verify` / `flow_reject` 三个工具都是「先投递、再写卡」，投递最长等 120 秒；旧写法把**投递前**读到的 `text` 加上新段整段 `writeFileSync` 回去，这几十秒里别人追加的段（测试的「## 验收」、统筹的「## 终审驳回」、开发自己的回执）会被一起抹掉。实证：15:49 C3 卡的「## 交付记录」落盘后消失，卡上只剩一段引用在代码块里的同名标题，`originalDeveloper` 取不到原开发，15:53 终审驳回投到了 1 号身上。现在写卡统一走 `commitCard(file, mutate)`：写前重读磁盘、把改动套在最新内容上、写完再核对，连抢三轮报错不硬写；段拼装统一走 `appendSection()`（两个换行起段）。另加交卡自检 `assertDeliveredRecord()`：交完若 `stripFencedBlocks` 后找不到本次的「## 交付记录（时间）」，直接报错，不当成交卡成功。harness 已验六组（A 旧写法复现吞段；B `commitCard` 保住邻居段且段头两换行；C 同一张卡并发交两次、两条交付记录都在；D 卡末未闭合围栏仍写出真段；E `flow_verify` 通过路径 status/段正常；F `flow_reject` 仍投原开发）。
+- **0.3.4**（2026-10-26，第四个洞：改头改到了正文上）：`setStatus` / `upsertHead` 的正则 `^key:.*$` 是满篇搜的，不认「YAML 头」和「正文」。头里没有 `to_session` 而行文里贴了一段带 `to_session:` 的证据（开发回执里常贴卡头原文），改的就会是**正文那一行**——头没补上、正文被改写，等于卡头永远不记持有人。实证：16:00 交卡后卡头仍无 `to_session`，回执代码块里那行引用被当成目标改了。现在两个函数都先切出第一对 `---` 之间的头块（`inHead()`），只在头里动手；头缺失直接报错。harness 已验（头无 `to_session` + 正文有同名行 → 头补上被派会话、正文那行原样不动、status 照改）。
+- **0.3.5**（2026-10-26，写卡口统一）：剩下六个口子——`flow_dispatch`、`flow_ask`、`flow_answer`、`flow_close`、`flow_run` 里的 `runDispatch` / `runClose`——全部从「读旧文本 → 改 → `writeFileSync` 整段写回」换成 `commitCard`（写前重读、写后核对、连抢三轮报错）。另外顺手补了第七处：`flow_run` 的「老卡补 waiting_final」那行写的是 `setStatus(text, …)`，形状与六处相同、但字符串不匹配 `fs.writeFileSync(file, text`，`grep` 查不出来。`flow_ask` / `flow_answer` 两段改用 `appendSection()`，段头前补上第二个换行（与 `flow_verify` 口径一致，属段粘连类）。六态流转、两类轮次账、投递行为（`say` 那部分）一个字没动；`grep -c "fs.writeFileSync(file, text" lib/index.js` = 0。另修 `flow_run` 的派单行：原来只有角色名（`> 派单 → 开发（时间）`），不带会话 id，与 `flow_dispatch` 的 `> 派单 → 开发 session-…（时间）` 不一致——0.3.1 的验收标准是「派单记录里保留派给谁的痕迹，不能只有卡头一处」，新路径漏了（1 号 6dd81437 在真宿主里挖出）。实证见「样本」下面的 AC 回执。
 - 现场共造 9 张一次性假卡（dryRun / submit / waiting_human / 连退回归 / 通过 / 判据 CD 等），验完全部清掉，config 临时改动均已还原。
 
 **没验的（先当不能）**
+
+- **0.3.2 的兜底只验到函数级**（机器 harness 跑 `execute`，投递用假 agent，落的是 `timeout` / `failed` 档）；重启后真实会话里的那一枪还没补——重启后只需复核「手工建卡 + 卡头统筹 + 不传 session」这一条，主路径 0.3.1 已验过。
+- **并发写卡的极小窗口仍在**：`commitCard` 把窗口从「投递的那几十秒」缩到「读-写之间那几毫秒」，不是锁，两个会话同一毫秒写同一张卡理论上还能丢一段。要真锁得上文件锁或改成追加写。6 号 2026-10-26 拿独立进程高频并发压过一轮（4 组 12 轮、6200 段 + 12 次交卡，一段没丢、交付记录都是真段），但**理论窗口不是零**；`commitCard` 里「连抢三轮就报错」那条分支**没构造出来，未验**（同进程 `setInterval` 插不进 read→write 之间，得靠独立进程）。报告：`D:\【欧鲸鲸的工作室】\【文档区】\测试文档\验收输出_探针H2_高频并发写卡_20261026.md`。
+- **`flow_dispatch` / `flow_ask` / `flow_answer` 的投递失败**：仍沿用旧语义——先写卡（含 `to_session`、段、派单行）再投递，投递明确失败时卡头已指向那个会话，下一轮由统筹改派覆盖。`flow_verify` / `flow_submit` / `flow_reject` 是「先投递再记账」，两套不一致，**待改**（0.3.5 只统一了写卡口，没动次序）。
+- **`commitCard` 的写-后核对只比「写进去的」与「重读的」**：若追加正好落在它 read→write 的那几微秒里，写回会吞掉那一段，核对也看不出来（对比的是自己写的内容）。0.3.5 的 D 组探针把它撞出来两次（6 段里丢 1 段），**这条窄缝没堵，也不该在本卡里堵**——要真堵得上文件锁或改成追加写。
+- **「20 段一个不丢」这类高频追加探针，对「写卡在投递之前」的口子不具区分力**：这几处写卡发生在投递之前，窗口是微秒级，改前改后都能过；要证明改动的价值，得把读-写窗口人为放大（0.3.5 的 D 组），或造两个并发写者。
 
 - **`flow_submit` 的 `timeout` 档**：跟 `flow_verify` 同一套判定，但没单独实证。
 - **`failed` 档的字面量匹配**：靠 `/not-found|不存在/i` 认，宿主换措辞会漏判成 `timeout`，届时同步改正则。
